@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { FileUp, Landmark, BookOpen, UserCheck, RefreshCw, PenTool, Sparkles, Printer, HelpCircle } from 'lucide-react';
+import { FileUp, Landmark, BookOpen, UserCheck, RefreshCw, PenTool, Sparkles, Printer, HelpCircle, Copy, Check } from 'lucide-react';
 import { WorksheetState } from '../types';
 
 const INITIAL_WORKSHEET: WorksheetState = {
@@ -48,6 +48,66 @@ export default function InteractiveWorksheet() {
   useEffect(() => {
     localStorage.setItem('dokdo_worksheet', JSON.stringify(worksheet));
   }, [worksheet]);
+
+  // AI Reflection states
+  const [reflectionKeywords, setReflectionKeywords] = useState('');
+  const [reflectionTone, setReflectionTone] = useState('학술적이고 객관적인 어조');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedReflection, setGeneratedReflection] = useState('');
+  const [generationError, setGenerationError] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const generateReflection = async () => {
+    if (!reflectionKeywords.trim()) {
+      alert("소감문의 핵심이 될 키워드를 입력해 주세요 (예: 세종실록, 태정관지령, 평화)");
+      return;
+    }
+
+    setIsGenerating(true);
+    setGenerationError('');
+    setGeneratedReflection('');
+
+    try {
+      const response = await fetch('/api/generate-reflection', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          keywords: reflectionKeywords,
+          tone: reflectionTone,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || '소감문을 생성하는 중 에러가 발생했습니다.');
+      }
+
+      setGeneratedReflection(data.reflection || '');
+    } catch (err: any) {
+      console.error(err);
+      setGenerationError(err.message || '소감문 생성 서버와 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const applyToContent = () => {
+    if (!generatedReflection) return;
+    setWorksheet(prev => ({
+      ...prev,
+      content: generatedReflection
+    }));
+  };
+
+  const copyToClipboard = () => {
+    if (!generatedReflection) return;
+    navigator.clipboard.writeText(generatedReflection).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   const handleInputChange = (field: keyof WorksheetState | string, value: string, isAnswer = false) => {
     if (isAnswer) {
@@ -289,6 +349,112 @@ export default function InteractiveWorksheet() {
 세종실록지리지, 태정관 지령 등의 문헌과 연도 등을 객관적으로 인용한 다음, 감정론을 피해 평화 공동체 번영 어휘로 마무리 지으세요.`}
                 className="w-full text-sm border border-neutral-800 bg-[#070708] text-white rounded-xl p-4 focus:border-emerald-500 focus:outline-none leading-relaxed"
               ></textarea>
+            </div>
+
+            {/* AI Custom Reflection Generator */}
+            <div className="bg-[#0b141d]/60 border border-blue-900/40 rounded-2xl p-4.5 space-y-4 shadow-xs">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4.5 h-4.5 text-blue-400" />
+                <h4 className="font-bold text-white text-xs sm:text-sm font-serif">
+                  💡 AI 학업 소감문 & 집필 초안 도우미
+                </h4>
+              </div>
+              <p className="text-[11px] text-neutral-400 leading-normal">
+                역사 지리 교육 과정에서 마주한 핵심 사료나 키워드를 아래 입력하면, 논리적 증거에 기반한 격조 높은 활동 소감문 및 집필 초고를 자동으로 작성해 드립니다.
+              </p>
+
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                  <div className="sm:col-span-8 space-y-1">
+                    <label className="text-2xs font-semibold text-neutral-400 block">소감문 키워드 입력 (쉼표로 구분)</label>
+                    <input
+                      type="text"
+                      id="input-reflection-keywords"
+                      value={reflectionKeywords}
+                      onChange={(e) => setReflectionKeywords(e.target.value)}
+                      placeholder="예: 세종실록, 태정관지령, 평화, 공동체 번영"
+                      className="w-full text-xs border border-neutral-800 bg-[#070708] text-white rounded-xl px-3 py-2 focus:border-blue-500 focus:outline-none placeholder:text-neutral-600"
+                    />
+                  </div>
+                  <div className="sm:col-span-4 space-y-1">
+                    <label className="text-2xs font-semibold text-neutral-400 block">문체 및 정서 어조</label>
+                    <select
+                      id="select-reflection-tone"
+                      value={reflectionTone}
+                      onChange={(e) => setReflectionTone(e.target.value)}
+                      className="w-full text-xs border border-neutral-800 bg-[#070708] text-neutral-300 rounded-xl px-3 py-2 focus:border-blue-500 focus:outline-none cursor-pointer"
+                    >
+                      <option value="학술적이고 객관적인 어조">학술적 · 객관적</option>
+                      <option value="미래지향적이며 따뜻한 공동체 어조">미래지향 · 성찰적</option>
+                      <option value="실천적이며 주권 영유를 강조하는 어조">실천적 · 주권강조</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  id="btn-generate-reflection"
+                  onClick={generateReflection}
+                  disabled={isGenerating}
+                  className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-800 disabled:text-neutral-500 text-white text-xs sm:text-sm font-bold py-2.5 rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {isGenerating ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-300" />
+                      역사 연구 자료를 분석하고 학습 소감문을 집필하고 있습니다...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      소감문 작성하기 (자동 생성)
+                    </>
+                  )}
+                </button>
+
+                {generationError && (
+                  <p className="text-[11px] text-red-400 bg-red-950/20 border border-red-900/30 p-2.5 rounded-xl">
+                    ⚠️ {generationError}
+                  </p>
+                )}
+
+                {generatedReflection && (
+                  <div className="space-y-3 animate-fadeIn">
+                    <div className="bg-[#05090e] border border-blue-950/30 p-4 rounded-xl text-xs sm:text-sm text-neutral-300 leading-relaxed font-serif whitespace-pre-wrap select-all">
+                      <strong className="block text-blue-400 font-bold mb-1 font-sans text-2xs uppercase tracking-wider">추천 학습 소감문:</strong>
+                      {generatedReflection}
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        type="button"
+                        id="btn-copy-reflection"
+                        onClick={copyToClipboard}
+                        className="px-3 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer border border-neutral-700"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            복사되었습니다
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            답안 복사하기
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        id="btn-apply-reflection"
+                        onClick={applyToContent}
+                        className="px-3 py-2 bg-blue-950 hover:bg-blue-900 border border-blue-900 text-blue-300 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <PenTool className="w-3.5 h-3.5" />
+                        집필 교과서 내용에 복사 적용
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Discussion Reflection fields */}
